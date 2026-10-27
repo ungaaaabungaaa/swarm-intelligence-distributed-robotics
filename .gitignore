@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+out/
+.plot-env/
+__pycache__/
