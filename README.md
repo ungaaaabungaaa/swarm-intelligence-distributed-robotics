@@ -1,5 +1,9 @@
 # Swarm Intelligence & Distributed Robotics
 
+![Swarm Intelligence and Distributed Robotics line-art concept](docs/images/project-cover.png)
+
+*Generated line-art concept illustration.*
+
 **Swarm Field Lab** is a working, dependency-free exploration simulator. Each robot plans from its own map. Nearby robots can exchange observations and visited-cell information. A browser lab replays actual runs, and a CLI reproduces the same results.
 
 This is a new simulation project built on 27 October 2026. It does not establish a physical robot build, a field deployment, or a fully decentralized collision controller.
