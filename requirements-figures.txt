@@ -1,0 +1,2 @@
+# Optional: used only to regenerate scientific figures, not by the simulator.
+matplotlib==3.11.2

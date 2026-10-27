@@ -1,0 +1,22 @@
+import {createServer} from 'node:http';
+import {readFile} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
+import {resolve} from 'node:path';
+const root=fileURLToPath(new URL('../',import.meta.url));
+const files=new Map([['/',['index.html','text/html; charset=utf-8']],['/index.html',['index.html','text/html; charset=utf-8']],...['app','core','scenarios','worker'].map(name=>[`/src/${name}.mjs`,[`src/${name}.mjs`,'text/javascript; charset=utf-8']]),['/src/styles.css',['src/styles.css','text/css; charset=utf-8']],['/docs/results/coverage.png',['docs/results/coverage.png','image/png']],['/docs/results/benchmark.csv',['docs/results/benchmark.csv','text/csv; charset=utf-8']]]);
+export function createAppServer(){
+ const server=createServer({maxHeaderSize:8192},async(req,res)=>{
+  const headers={'Content-Security-Policy':"default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Cache-Control':'no-store','X-Frame-Options':'DENY','Permissions-Policy':'camera=(), microphone=(), geolocation=()'};
+  for(const[name,value]of Object.entries(headers))res.setHeader(name,value);
+  const port=server.address()?.port;if(![`127.0.0.1:${port}`,`localhost:${port}`].includes(req.headers.host)){res.writeHead(403);res.end('Unexpected host.');return;}
+  if(!['GET','HEAD'].includes(req.method)){res.setHeader('Allow','GET, HEAD');res.writeHead(405);res.end('Method not allowed.');return;}
+  let path;try{path=decodeURIComponent(new URL(req.url,'http://localhost').pathname);}catch{res.writeHead(404);res.end('Not found.');return;}
+  const file=files.get(path);if(!file){res.writeHead(404);res.end('Not found.');return;}
+  try{const data=await readFile(resolve(root,file[0]));res.setHeader('Content-Type',file[1]);res.setHeader('Content-Length',data.length);res.writeHead(200);res.end(req.method==='HEAD'?undefined:data);}catch{res.writeHead(500);res.end('App file unavailable.');}
+ });server.headersTimeout=10000;server.requestTimeout=10000;server.keepAliveTimeout=1000;return server;
+}
+if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+ const port=Number(process.env.PORT??8796);
+ if(!Number.isInteger(port)||port<1024||port>65535){process.stderr.write('PORT must be an integer from 1024 to 65535.\n');process.exitCode=1;}
+ else{const server=createAppServer();server.on('error',()=>{process.stderr.write('Could not start loopback server. Check the selected port.\n');process.exitCode=1;});server.listen(port,'127.0.0.1',()=>process.stdout.write(`Swarm Field Lab: http://127.0.0.1:${port}\n`));}
+}

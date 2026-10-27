@@ -1,0 +1,7 @@
+{
+  "benchmarkSha256": "e3ee6f6b9eb02ec878c4bbbdf63afda6244a57641b6c53ab0a690ea4ccba6b54",
+  "matplotlibVersion": "3.11.2",
+  "source": "benchmark.json",
+  "figure": "coverage.png",
+  "description": "Actual terminal coverage means and sample standard deviations; no generated imagery."
+}
