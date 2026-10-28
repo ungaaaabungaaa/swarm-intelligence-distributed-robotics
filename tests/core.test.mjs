@@ -90,3 +90,24 @@ test('a large allowed replay remains within frame, position and byte bounds',()=
  const run=simulate({world:Array(40).fill('.'.repeat(40)),robots:1,ticks:1000,seed:2,target:1});
  assert.ok(run.frames.length<=1001);assert.ok(run.frames.length*run.config.robots<=16016);assert.ok(new TextEncoder().encode(JSON.stringify(run)).byteLength<=2*1024*1024);
 });
+test('complete message loss removes map and target sharing without changing local safety',()=>{
+ const common={world:empty,robots:3,ticks:60,seed:7,communicationRadius:6};
+ const lost=simulate({...common,messageDropRate:1});
+ const independent=simulate({...common,policy:'frontier'});
+ assert.deepEqual(lost.frames,independent.frames);
+ assert.deepEqual(lost.metrics,independent.metrics);
+ assert.ok(lost.communication.attempted>0);
+ assert.equal(lost.communication.dropped,lost.communication.attempted);
+});
+test('seeded partial loss is repeatable and zero loss preserves existing behavior',()=>{
+ const common={world:empty,robots:3,ticks:60,seed:42};
+ const lossy=simulate({...common,messageDropRate:.5});
+ assert.deepEqual(lossy,simulate({...common,messageDropRate:.5}));
+ assert.ok(lossy.communication.dropped>0);
+ assert.ok(lossy.communication.dropped<lossy.communication.attempted);
+ assert.equal(lossy.metrics.messages,lossy.communication.attempted-lossy.communication.dropped);
+ const reliable=simulate({...common,messageDropRate:0});
+ assert.deepEqual(reliable.frames,simulate(common).frames);
+ assert.deepEqual(reliable.metrics,simulate(common).metrics);
+ for(const messageDropRate of [-.1,1.1,NaN,Infinity,'0.5',null])assert.throws(()=>simulate({...common,messageDropRate}));
+});

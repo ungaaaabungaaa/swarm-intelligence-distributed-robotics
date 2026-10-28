@@ -9,11 +9,12 @@ function integer(value,min,max,name){if(!Number.isInteger(value)||value<min||val
 function finite(value,min,max,name){if(!Number.isFinite(value)||value<min||value>max)fail(`${name} must be from ${min} to ${max}.`);return value;}
 export function validateConfig(input){
  if(!input||typeof input!=='object'||Array.isArray(input))fail('Configuration must be an object.');
- const allowed=['world','policy','seed','robots','ticks','sensorRadius','communicationRadius','radius','target','dt','starts'];
+ const allowed=['world','policy','seed','robots','ticks','sensorRadius','communicationRadius','radius','target','dt','starts','messageDropRate'];
  if(Object.keys(input).some(name=>!allowed.includes(name)))fail('Unknown configuration field.');
  const world=input.world;
  if(!Array.isArray(world)||world.length<3||world.length>40||typeof world[0]!=='string'||world[0].length<3||world[0].length>40||world.some(row=>typeof row!=='string'||row.length!==world[0].length||!/^[.#]+$/.test(row)))fail('World must be a 3–40 cell rectangle of . and # characters.');
  const config={world:[...world],policy:input.policy??'gossip',seed:integer(input.seed??42,0,4294967295,'seed'),robots:integer(input.robots??6,1,16,'robots'),ticks:integer(input.ticks??400,1,1000,'ticks'),sensorRadius:integer(input.sensorRadius??3,1,8,'sensorRadius'),communicationRadius:finite(input.communicationRadius??6,0,20,'communicationRadius'),radius:finite(input.radius??.25,.1,.45,'radius'),target:finite(input.target??.95,.1,1,'target'),dt:finite(input.dt??1,.1,10,'dt')};
+ if(Object.hasOwn(input,'messageDropRate'))config.messageDropRate=finite(input.messageDropRate,0,1,'messageDropRate');
  if(!['random','frontier','gossip'].includes(config.policy))fail('Policy must be random, frontier, or gossip.');
  const width=world[0].length;
  if(config.robots*config.ticks*width*world.length>10000000||config.robots**2*config.ticks*width*world.length>80000000)fail('Configuration exceeds the bounded simulation work limit.');
@@ -95,9 +96,10 @@ function scan(world,agent,radius){
  }
  agent.visited[cell(agent.position,width)]=1;
 }
-export function shareMaps(world,agents,range){
+export function shareMaps(world,agents,range,deliver=()=>true){
  const snapshots=agents.map(agent=>({map:agent.map.slice(),visited:agent.visited.slice()}));let messages=0;
  for(let i=0;i<agents.length;i++)for(let j=0;j<agents.length;j++)if(i!==j&&distance(agents[i].position,agents[j].position)<=range+EPS&&visible(world,agents[i].position,agents[j].position)){
+  if(!deliver(j,i))continue;
   for(let k=0;k<agents[i].map.length;k++){if(snapshots[j].map[k])agents[i].map[k]=snapshots[j].map[k];if(snapshots[j].visited[k])agents[i].visited[k]=1;}messages++;
  }
  return messages;
@@ -140,6 +142,7 @@ function decide(dimensions,agent,peers,sensed,policy){
 export function simulate(input){
  const config=validateConfig(input),world=config.world,width=world[0].length,size=width*world.length;
  const agents=config.starts.map((position,i)=>({position:[...position],map:new Uint8Array(size),visited:new Uint8Array(size),target:null,id:i,waitTicks:0,tie:(config.seed+Math.imul(i+1,2654435761))>>>0,rng:random((config.seed+Math.imul(i+1,2654435761))>>>0)}));
+ const network=random((config.seed^0x85ebca6b)>>>0),communication={attempted:0,dropped:0};
  const reachable=reachableCells(world,config.starts),seen=new Set(),visited=new Set(),frames=[];
  let distanceM=0,blockedMoves=0,messages=0,stallTicks=0,stallEpisodes=0,ticks=0,timeToTargetSeconds=null,reason='budget';
  function frame(tick){
@@ -151,10 +154,15 @@ export function simulate(input){
  frame(0);
  if(visited.size/reachable.size>=config.target){timeToTargetSeconds=0;reason='target';}
  else for(let tick=0;tick<config.ticks;tick++){
-  if(config.policy==='gossip')messages+=shareMaps(world,agents,config.communicationRadius);
+  const delivered=new Set();
+  if(config.policy==='gossip')messages+=shareMaps(world,agents,config.communicationRadius,(from,to)=>{
+   communication.attempted++;
+   if((config.messageDropRate??0)>0&&network()<config.messageDropRate){communication.dropped++;return false;}
+   delivered.add(`${from}:${to}`);return true;
+  });
   const snapshot=agents.map(agent=>({position:[...agent.position],target:agent.target,id:agent.id}));
   const proposals=agents.map((agent,i)=>{
-   const peers=config.policy==='gossip'?snapshot.filter((peer,j)=>j!==i&&distance(agent.position,peer.position)<=config.communicationRadius+EPS&&visible(world,agent.position,peer.position)):[];
+   const peers=config.policy==='gossip'?snapshot.filter((peer,j)=>delivered.has(`${j}:${i}`)):[];
    const sensed=snapshot.filter((peer,j)=>j!==i&&distance(agent.position,peer.position)<=config.sensorRadius+EPS&&visible(world,agent.position,peer.position));
    return decide({width,height:world.length},agent,peers,sensed,config.policy);
   });
@@ -168,6 +176,7 @@ export function simulate(input){
  }
  const mapped=[...reachable].filter(index=>seen.has(index)).length;
  const report={schemaVersion:1,config,world:[...world],initialPositions:config.starts.map(point=>[...point]),frames,metrics:{reachableCells:reachable.size,visitedCells:visited.size,mappedFreeCells:mapped,visitedCoverage:visited.size/reachable.size,mappedCoverage:mapped/reachable.size,ticks,timeSeconds:ticks*config.dt,timeToTargetSeconds,distanceM,blockedMoves,collisionCount:0,stallEpisodes,messages,termination:reason}};
+ if(Object.hasOwn(config,'messageDropRate'))report.communication=communication;
  if(frames.length>1001||frames.length*agents.length>16016||new TextEncoder().encode(JSON.stringify(report)).byteLength>2*1024*1024)fail('Replay exceeds its bounded output limit.');
  return report;
 }
