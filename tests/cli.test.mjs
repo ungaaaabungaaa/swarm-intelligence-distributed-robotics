@@ -20,3 +20,15 @@ test('CLI rejects unknown and malformed options without a report',async()=>{
  for(const args of [['fly'],['run','--wat','1'],['run','--seed'],['run','--seed','NaN'],['run','--seed','1','--seed','2'],['run','--scenario','missing'],['run','--robots','100'],['run','--policy','__proto__']])await assert.rejects(run(args));
  assert.match((await run(['--help'])).stdout,/centralized simulator safety/);
 });
+test('CLI loss option exports the configured experiment and packet counters',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'swarm-loss-'));try{
+  const path=join(dir,'loss.json');
+  await run(['run','--robots','3','--ticks','20','--message-loss','1','--out',path,'--json']);
+  const report=JSON.parse(await readFile(path,'utf8'));
+  assert.equal(report.config.messageDropRate,1);
+  assert.ok(report.communication.attempted>0);
+  assert.equal(report.communication.dropped,report.communication.attempted);
+  assert.equal(report.metrics.messages,0);
+  await assert.rejects(run(['run','--message-loss','1.1']));
+ }finally{await rm(dir,{recursive:true,force:true});}
+});
